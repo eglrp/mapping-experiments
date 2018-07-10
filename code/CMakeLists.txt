@@ -17,7 +17,7 @@ link_directories(${PCL_LIBRARY_DIRS})
 #link_libraries(${OpenCV_LIBS})
 link_libraries(${PCL_LIBRARIES})
 
-add_executable(code match_velo_narf_frames.cpp load_velodyne.cpp)
+add_executable(code match_velo_harris_frames.cpp load_velodyne.cpp)
 #add_executable(code matrix.cpp octo_model.cpp octo_model.h proc_velodyne.cpp)
 #add_executable (range_image_visualization range_image_visualization.cpp)
 #target_link_libraries (range_image_visualization ${PCL_LIBRARIES})

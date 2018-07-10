@@ -13,6 +13,8 @@
 //#include <opencv2/core.hpp>
 //#include <opencv2/highgui.hpp>
 
+#include <boost/thread/thread.hpp>
+#include <pcl/range_image/range_image.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/registration/icp.h>
@@ -116,7 +118,7 @@ int main(int argc, char** argv) {
     Eigen::Affine3f cam_sensor_pose(Eigen::Affine3f::Identity());
     boost::shared_ptr<pcl::RangeImage> range_image_frame0_cam0_ptr(new pcl::RangeImage);
     pcl::RangeImage &range_image_frame0_cam0 = *range_image_frame0_cam0_ptr;
-    range_image_frame0_cam0.createFromPointCloud(velo_frame0_in_cam0_frame_ptr, angular_resolution, pcl::deg2rad(360.0f), pcl::deg2rad(180.0f),
+    range_image_frame0_cam0.createFromPointCloud(*velo_frame0_in_cam0_frame_ptr, angular_resolution, pcl::deg2rad(360.0f), pcl::deg2rad(180.0f),
                                      cam_sensor_pose, pcl::RangeImage::LASER_FRAME, noise_level, min_range,
                                      border_size);
 //    range_image.integrateFarRanges (far_ranges);
@@ -175,7 +177,7 @@ int main(int argc, char** argv) {
 
     boost::shared_ptr<pcl::RangeImage> range_image_frame1_cam0_ptr(new pcl::RangeImage);
     pcl::RangeImage &range_image_frame1_cam0 = *range_image_frame1_cam0_ptr;
-    range_image_frame1_cam0.createFromPointCloud(velo_frame1_in_cam0_frame_ptr, angular_resolution, pcl::deg2rad(360.0f), pcl::deg2rad(180.0f),
+    range_image_frame1_cam0.createFromPointCloud(*velo_frame1_in_cam0_frame_ptr, angular_resolution, pcl::deg2rad(360.0f), pcl::deg2rad(180.0f),
                                                  cam_sensor_pose, pcl::RangeImage::LASER_FRAME, noise_level, min_range,
                                                  border_size);
 //    range_image.integrateFarRanges (far_ranges);
@@ -247,6 +249,9 @@ int main(int argc, char** argv) {
         std::cout << icp.getFinalTransformation() << std::endl;
     }
 
+    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> keypoints_final_cam0_color_handler(cloud_source, 255, 0, 255);
+    viewer.addPointCloud<pcl::PointXYZ>(cloud_source, keypoints_final_cam0_color_handler, "keypoints final");
+    viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 7, "keypoints final");
 
 //    pcl::visualization::PCLVisualizer viewer("3D Viewer");
 //    viewer.setBackgroundColor(1, 1, 1);
