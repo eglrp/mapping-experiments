@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
 
     cout << "loading stereo frame 1 from file" << endl;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame0_in_cam0_frame_ptr = loadCamFrameInCamiRef(20);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame0_in_cam0_frame_ptr = loadCamFrameInCamiRef(1);
 
     std::cout << "Saved " << velo_frame0_in_cam0_frame_ptr->points.size () << " data points from frame 0"
               << std::endl;
@@ -80,16 +80,17 @@ int main(int argc, char** argv) {
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_source (velo_frame0_in_cam0_frame_ptr);
 
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 10; ++i) {
         pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
         icp.setInputSource(cloud_source);
         icp.setInputTarget(cam_frame0_in_cam0_frame_ptr);
         icp.setTransformationEpsilon(1e-13);
         icp.setEuclideanFitnessEpsilon(0.1);
-        icp.setMaxCorrespondenceDistance (20.0);
+        icp.setMaxCorrespondenceDistance (1.0);
 //        icp.setRANSACOutlierRejectionThreshold (1.0);
         pcl::PointCloud<pcl::PointXYZ> Final;
         icp.align(Final);
+        pcl::transformPointCloud(*cloud_source, Final, icp.getFinalTransformation());
         *cloud_source = Final;
         std::cout << "has converged:" << icp.hasConverged() << " score: " <<
                   icp.getFitnessScore(1.0) << std::endl;
