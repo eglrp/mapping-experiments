@@ -38,12 +38,15 @@ int main(int argc, char** argv) {
 
     cout << "loading stereo frame 1 from file" << endl;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame0_in_cam0_frame_ptr = loadCamFrameInCamiRef(20);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame0_in_cam0_frame_ptr = loadCamFrameInCamiRef(2);
 
     std::cout << "Saved " << velo_frame0_in_cam0_frame_ptr->points.size () << " data points from frame 0"
               << std::endl;
     std::cout << "Saved " << cam_frame0_in_cam0_frame_ptr->points.size () << " data points from frame 1"
               << std::endl;
+
+    Eigen::DiagonalMatrix<double, 3> cov_cam(0.25, 0.25, 4.0);
+    Eigen::DiagonalMatrix<double, 3> cov_velo(1.0, 1.0, 1.0);
 
     pcl::HarrisKeypoint3D <pcl::PointXYZ, pcl::PointXYZI> detector;
     pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_frame0_ptr (new pcl::PointCloud<pcl::PointXYZI>);
@@ -54,6 +57,11 @@ int main(int argc, char** argv) {
 //    pcl::StopWatch watch;
     detector.compute (*keypoints_frame0_ptr);
     pcl::console::print_highlight ("Detected %zd points in frame 0\n", keypoints_frame0_ptr->size ());
+    pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI,pcl::PointXYZI>::MatricesVectorPtr keypoints_frame0_cov(new pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI,pcl::PointXYZI>::MatricesVector);
+    for (int i = 0; i < keypoints_frame0_ptr->size(); ++i)
+    {
+        keypoints_frame0_cov->push_back(cov_velo);
+    }
 //    pcl::PointIndicesConstPtr keypoints_indices_frame0 = detector.getKeypointsIndices ();
 //    if (!keypoints_indices_frame0->indices.empty ())
 //    {
@@ -68,7 +76,11 @@ int main(int argc, char** argv) {
 //    detector.setRadius(2.0);
     detector.compute (*keypoints_frame1_ptr);
     pcl::console::print_highlight ("Detected %zd points in frame 1\n", keypoints_frame1_ptr->size ());
-
+    pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI,pcl::PointXYZI>::MatricesVectorPtr keypoints_frame1_cov(new pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI,pcl::PointXYZI>::MatricesVector);
+    for (int i = 0; i < keypoints_frame1_ptr->size(); ++i)
+    {
+        keypoints_frame1_cov->push_back(cov_cam);
+    }
 
 
     // --------------------------------------------
@@ -122,10 +134,12 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 10; ++i) {
         pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
         icp.setInputSource(cloud_source);
+        icp.setSourceCovariances(keypoints_frame0_cov);
         icp.setInputTarget(keypoints_frame1_ptr);
+        icp.setTargetCovariances(keypoints_frame1_cov);
         icp.setTransformationEpsilon(1e-13);
         icp.setEuclideanFitnessEpsilon(0.1);
-        icp.setMaxCorrespondenceDistance (20.0);
+        icp.setMaxCorrespondenceDistance (2.0);
 //        icp.setRANSACOutlierRejectionThreshold (1.0);
         pcl::PointCloud<pcl::PointXYZI> Final;
         icp.align(Final);

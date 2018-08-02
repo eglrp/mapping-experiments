@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "load_stereo_cam.h"
+#include "load_point_cloud.h"
 #include <pcl/common/transforms.h>
 
 #include <opencv2/core.hpp>
@@ -15,30 +15,30 @@
 
 using namespace std;
 
-vector<Eigen::Matrix4f> load_cam_poses(string file_name)
-{
-    double r00, r01, r02, r10, r11, r12, r20, r21, r22;
-    double t0, t1, t2;
-    vector<Eigen::Matrix4f> poses;
-    FILE *fp = fopen(file_name.c_str(),"r");
-    if (!fp)
-        return poses;
-    while (!feof(fp)) {
-        if (fscanf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-                   &r00, &r01, &r02, &t0,
-                   &r10, &r11, &r12, &t1,
-                   &r20, &r21, &r22, &t2 )==12) {
-            Eigen::Matrix4f Tcami2cam0;
-            Tcami2cam0 << r00, r01, r02, t0,
-                          r10, r11, r12, t1,
-                          r20, r21, r22, t2,
-                            0,   0,   0,  1;
-            poses.push_back(Tcami2cam0);
-        }
-    }
-    fclose(fp);
-    return poses;
-}
+//vector<Eigen::Matrix4f> load_cam_poses(string file_name)
+//{
+//    double r00, r01, r02, r10, r11, r12, r20, r21, r22;
+//    double t0, t1, t2;
+//    vector<Eigen::Matrix4f> poses;
+//    FILE *fp = fopen(file_name.c_str(),"r");
+//    if (!fp)
+//        return poses;
+//    while (!feof(fp)) {
+//        if (fscanf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+//                   &r00, &r01, &r02, &t0,
+//                   &r10, &r11, &r12, &t1,
+//                   &r20, &r21, &r22, &t2 )==12) {
+//            Eigen::Matrix4f Tcami2cam0;
+//            Tcami2cam0 << r00, r01, r02, t0,
+//                          r10, r11, r12, t1,
+//                          r20, r21, r22, t2,
+//                            0,   0,   0,  1;
+//            poses.push_back(Tcami2cam0);
+//        }
+//    }
+//    fclose(fp);
+//    return poses;
+//}
 
 //Eigen::Matrix4f loadCam12Cam0(string file_name)
 //{
@@ -281,7 +281,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number)
 {
     string data_path = "/home/boroson/data/kitti/dataset/sequences/00/";
 
-    vector<Eigen::Matrix4f> poses = load_cam_poses("/home/boroson/data/kitti/dataset/poses/00.txt");
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/00.txt");
     int num_poses = poses.size();
 //    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
     cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
@@ -306,7 +306,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number)
 {
     string data_path = "/home/boroson/data/kitti/dataset/sequences/00/";
 
-    vector<Eigen::Matrix4f> poses = load_cam_poses("/home/boroson/data/kitti/dataset/poses/00.txt");
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/00.txt");
     int num_poses = poses.size();
 //    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
     cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
