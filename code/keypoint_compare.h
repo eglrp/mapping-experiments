@@ -11,4 +11,7 @@
 
 void compare_harris_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2, std::string filename);
 
+void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2, std::string filename);
+
+
 #endif //CODE_KEYPOINT_COMPARE_H
