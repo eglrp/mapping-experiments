@@ -45,17 +45,31 @@ int main(int argc, char** argv) {
 
         cout << "loading velodyne frame " << i << " from file" << endl;
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame_in_cam0_frame_ptr = loadVelFrameInCam0Ref(i);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame_in_cam0_frame_ptr = loadVelFrameInCamiRef(i);
 
         cout << "loading stereo frame " << i << " from file" << endl;
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame_in_cam0_frame_ptr = loadCamFrameInCam0Ref(i);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame_in_cam0_frame_ptr = loadCamFrameInCamiRef(i);
 
-        string filename = "/home/boroson/data/kitti/features/harris/";
+//        string filename_keypt = "/home/boroson/data/kitti/features/narf/";
+//        filename_keypt.append(to_string(i));
+//        filename_keypt.append("_keypt");
+//        string filename_desc = "/home/boroson/data/kitti/features/narf/";
+//        filename_desc.append(to_string(i));
+//        filename_desc.append("_desc");
+//
+//        compare_narf_features(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename_keypt, filename_desc);
+
+//        string filename = "/home/boroson/data/kitti/features/harris/";
+//        filename.append(to_string(i));
+//
+//        compare_harris_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
+
+        string filename = "/home/boroson/data/kitti/features/iss/";
         filename.append(to_string(i));
-        filename.append(".txt");
 
-        compare_harris_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
+        compare_iss_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
+
     }
 
     return 0;
