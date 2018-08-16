@@ -18,12 +18,12 @@
 
 std::vector<Eigen::Matrix4f> loadPoses(std::string file_name);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number, int seq_number);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number, int seq_number);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number, int seq_number);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number, int seq_number);
 
 #endif //CODE_LOAD_POINT_CLOUD_H

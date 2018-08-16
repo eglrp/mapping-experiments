@@ -13,8 +13,8 @@
 #ifndef CODE_LOAD_STEREO_CAM_H
 #define CODE_LOAD_STEREO_CAM_H
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number, int seq_number);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number, int seq_number);
 
 #endif //CODE_LOAD_STEREO_CAM_H

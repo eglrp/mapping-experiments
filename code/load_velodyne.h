@@ -13,8 +13,8 @@
 #ifndef CODE_LOAD_VELODYNE_H
 #define CODE_LOAD_VELODYNE_H
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number, int seq_number);
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number);
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number, int seq_number);
 
 #endif //CODE_LOAD_VELODYNE_H

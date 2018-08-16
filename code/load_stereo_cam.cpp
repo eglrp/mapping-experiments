@@ -277,14 +277,16 @@ void read_frame(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, cv::Mat p1_proj_mat, str
 }
 
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number)
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number, int seq_number)
 {
-    string data_path = "/home/boroson/data/kitti/dataset/sequences/00/";
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    string data_path = "/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/";
 
-    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/00.txt");
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
     int num_poses = poses.size();
 //    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
-    cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
+    cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cam_cloud_cam_frame_ptr(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cam_cloud_cam0_frame_ptr(new pcl::PointCloud<pcl::PointXYZ>);
@@ -302,14 +304,16 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number)
     return cam_cloud_cam0_frame_ptr;
 }
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number)
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number, int seq_number)
 {
-    string data_path = "/home/boroson/data/kitti/dataset/sequences/00/";
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    string data_path = "/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/";
 
-    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/00.txt");
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
     int num_poses = poses.size();
 //    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
-    cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
+    cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cam_cloud_cam_frame_ptr(new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -317,7 +321,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number)
     sprintf(filename, "%06d.png", frame_number);
     string im0_file = data_path + "image_0/" + string(filename);
     string im1_file = data_path + "image_1/" + string(filename);
-    cout << "Read file " << filename << endl;
+    cout << "Read file " << im0_file << endl;
 
     read_frame(cam_cloud_cam_frame_ptr, p1_proj, im0_file, im1_file);
     // poses[frame_number] = TCami2Cam0

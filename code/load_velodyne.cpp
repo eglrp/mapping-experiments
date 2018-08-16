@@ -108,13 +108,15 @@ void read_scan(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, string filename)
 }
 
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number)
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number, int seq_number)
 {
-    string data_path = "/home/boroson/data/kitti/dataset/sequences/00/velodyne/";
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    string data_path = "/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/velodyne/";
 
-    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/00.txt");
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
     int num_poses = poses.size();
-    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
+    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
 
 //    string data_path = "/home/lboroson/act/mapping/kitti/dataset/sequences/00/velodyne/";
 //
@@ -142,13 +144,15 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCam0Ref(int frame_number)
     return velo_cloud_cam0_frame_ptr;
 }
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number)
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number, int seq_number)
 {
-    string data_path = "/home/boroson/data/kitti/dataset/sequences/00/velodyne/";
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    string data_path = "/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/velodyne/";
 
-    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/00.txt");
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
     int num_poses = poses.size();
-    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
+    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
 
 //    string data_path = "/home/lboroson/act/mapping/kitti/dataset/sequences/00/velodyne/";
 //

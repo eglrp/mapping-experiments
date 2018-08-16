@@ -41,36 +41,45 @@ int main(int argc, char** argv) {
     int num_poses = poses.size();
 
 //    for (int i = 0; i < num_poses; ++i)
-    for (int i = 0; i < num_poses; ++i)
+    for (int i = 0; i < 100; i = i + 10)
     {
+        for (int j = 0; j < 100; ++j)
+        {
 
-        cout << "loading velodyne frame " << i << " from file" << endl;
+            cout << "loading velodyne frame " << i << " from file" << endl;
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame_in_cam0_frame_ptr = loadVelFrameInCamiRef(i, 2);
+            pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame_in_cam0_frame_ptr = loadVelFrameInCamiRef(i, 2);
 
-        cout << "loading stereo frame " << i << " from file" << endl;
+            cout << "loading stereo frame " << j << " from file" << endl;
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame_in_cam0_frame_ptr = loadCamFrameInCamiRef(i, 2);
+            pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame_in_cam0_frame_ptr = loadCamFrameInCamiRef(j, 2);
 
-        string filename_keypt = "/home/boroson/data/kitti/features/narf/02_sameframe/";
-        filename_keypt.append(to_string(i));
-        filename_keypt.append("_keypt");
-        string filename_desc = "/home/boroson/data/kitti/features/narf/02_sameframe/";
-        filename_desc.append(to_string(i));
-        filename_desc.append("_desc");
-
-        compare_narf_features(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename_keypt, filename_desc);
-
-//        string filename = "/home/boroson/data/kitti/features/harris/02_sameframe/";
-//        filename.append(to_string(i));
+//            string filename_keypt = "/home/boroson/data/kitti/features/narf/seg1_frametoframe/";
+//            filename_keypt.append(to_string(i));
+//            filename_keypt.append("_");
+//            filename_keypt.append(to_string(j));
+//            filename_keypt.append("_keypt");
+//            string filename_desc = "/home/boroson/data/kitti/features/narf/seg1_frametoframe/";
+//            filename_desc.append(to_string(i));
+//            filename_desc.append("_");
+//            filename_desc.append(to_string(j));
+//            filename_desc.append("_desc");
 //
-//        compare_harris_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
+//            compare_narf_features(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename_keypt, filename_desc);
+
+        string filename = "/home/boroson/data/kitti/features/harris/seg1_frametoframe/";
+        filename.append(to_string(i));
+        filename.append("_");
+        filename.append(to_string(j));
+
+        compare_harris_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
 
 //        string filename = "/home/boroson/data/kitti/features/iss/";
 //        filename.append(to_string(i));
 //
 //        compare_iss_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
 
+        }
     }
 
     return 0;

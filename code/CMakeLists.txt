@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.5)
 project(code)
 
 set(CMAKE_CXX_STANDARD 11)
@@ -17,8 +17,8 @@ link_directories(${CV_LIBRARY_DIRS})
 link_libraries(${OpenCV_LIBS})
 link_libraries(${PCL_LIBRARIES})
 
-add_executable(code compare_trajectory_velo_cam.cpp load_velodyne.cpp load_stereo_cam.cpp keypoint_compare.cpp keypoint_compare.h)
-#add_executable(code match_velo_cam_iss.cpp load_velodyne.cpp load_stereo_cam.cpp keypoint_compare.cpp keypoint_compare.h)
+#add_executable(code compare_trajectory_frametoframe_velo_cam.cpp load_velodyne.cpp load_stereo_cam.cpp keypoint_compare.cpp keypoint_compare.h)
+add_executable(code match_velo_cam_kpq.cpp load_velodyne.cpp load_stereo_cam.cpp keypoint_compare.cpp keypoint_compare.h)
 #add_executable(code matrix.cpp octo_model.cpp octo_model.h proc_velodyne.cpp)
 #add_executable (range_image_visualization range_image_visualization.cpp)
 #target_link_libraries (range_image_visualization ${PCL_LIBRARIES})
