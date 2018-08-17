@@ -26,6 +26,7 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/features/range_image_border_extractor.h>
 #include "kpq_3d.h"
+#include "kpq_as_3d.h"
 
 #include "load_point_cloud.h"
 
@@ -56,7 +57,7 @@ int main(int argc, char** argv) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_frame0_ptr (new pcl::PointCloud<pcl::PointXYZ>);
 
 // Compute model_resolution
-    pcl::KPQKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> kpq_detector;
+    pcl::KPQASKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> kpq_detector;
     kpq_detector.setBorderRadius(0.001);
     kpq_detector.setNormalRadius(4 * model_resolution);
     kpq_detector.setSearchMethod (tree);
@@ -78,7 +79,7 @@ int main(int argc, char** argv) {
 //    }
 //    else
 //        pcl::console::print_warn ("Keypoints indices are empty!\n");
-
+//
     pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_frame1_ptr (new pcl::PointCloud<pcl::PointXYZ>);
     kpq_detector.setInputCloud (cam_frame0_in_cam0_frame_ptr);
 //    detector.setRadius(2.0);
@@ -150,11 +151,11 @@ int main(int argc, char** argv) {
                   icp.getFitnessScore(1.0) << std::endl;
         std::cout << icp.getFinalTransformation() << std::endl;
     }
-
-    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> keypoints_final_cam0_color_handler(cloud_source, 255, 0, 255);
-    viewer.addPointCloud<pcl::PointXYZ>(cloud_source, keypoints_final_cam0_color_handler, "keypoints final");
-    viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 7, "keypoints final");
-
+//
+//    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> keypoints_final_cam0_color_handler(cloud_source, 255, 0, 255);
+//    viewer.addPointCloud<pcl::PointXYZ>(cloud_source, keypoints_final_cam0_color_handler, "keypoints final");
+//    viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 7, "keypoints final");
+//
 
     //--------------------
     // -----Main loop-----
