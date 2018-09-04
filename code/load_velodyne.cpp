@@ -172,9 +172,42 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamiRef(int frame_number, int 
 
     pcl::transformPointCloud(*velo_cloud_vel_frame_ptr, *velo_cloud_cam_frame_ptr, Tvel2cam);
 
-    cout << "True rotation from this frame to Cam i frame: \n" << poses[frame_number] << endl;
+//    cout << "True rotation from this frame to Cam i frame: \n" << poses[frame_number] << endl;
 
     return velo_cloud_cam_frame_ptr;
 }
 
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadVelFrameInCamjRef(int frame_number, int j, int seq_number)
+{
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    string data_path = "/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/velodyne/";
+
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
+    int num_poses = poses.size();
+    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
+
+//    string data_path = "/home/lboroson/act/mapping/kitti/dataset/sequences/00/velodyne/";
+//
+//    vector<Eigen::Matrix4f> poses = loadPoses("/home/lboroson/act/mapping/kitti/dataset/poses/00.txt");
+//    int num_poses = poses.size();
+//    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/lboroson/act/mapping/kitti/dataset/sequences/00/calib.txt");
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr velo_cloud_vel_frame_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr velo_cloud_cam0_frame_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+
+    char filename[10];
+    sprintf(filename, "%06d.bin", frame_number);
+    string scan_file = data_path + string(filename);
+    cout << "Read file " << filename << endl;
+
+    read_scan(velo_cloud_vel_frame_ptr, scan_file);
+    Eigen::Matrix4f Tveli2camj;
+    Tveli2camj = poses[j].inverse() * poses[frame_number] * Tvel2cam;
+
+    pcl::transformPointCloud(*velo_cloud_vel_frame_ptr, *velo_cloud_cam0_frame_ptr, Tveli2camj);
+
+    return velo_cloud_cam0_frame_ptr;
+}
 

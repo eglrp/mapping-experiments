@@ -8,32 +8,51 @@
 #include <pcl/keypoints/harris_3d.h>
 #include <pcl/kdtree/kdtree_flann.h>
 
+#include <pcl/keypoints/narf_keypoint.h>
+#include <pcl/features/narf_descriptor.h>
 #include <boost/thread/thread.hpp>
-#include <pcl/range_image/range_image.h>
+//#include <pcl/range_image/range_image.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/registration/icp.h>
 #include <pcl/features/normal_3d.h>
-#include <pcl/filters/filter.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/crop_hull.h>
 #include <pcl/visualization/range_image_visualizer.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/features/range_image_border_extractor.h>
-#include <pcl/keypoints/narf_keypoint.h>
-#include <pcl/features/narf_descriptor.h>
 #include <pcl/common/geometry.h>
 #include <pcl/keypoints/iss_3d.h>
+#include <pcl/surface/convex_hull.h>
 
 #include "keypoint_compare.h"
+#include "kpq_3d.h"
+#include "kpq_as_3d.h"
 
 std::vector<int>  matchNarfDescriptors(pcl::PointCloud<pcl::Narf36> velo_features, pcl::PointCloud<pcl::Narf36> cam_features);
 
 
-void compare_harris_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename)
+void compare_harris_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename, pcl::PointCloud<pcl::PointXYZ>::Ptr intersection)
 {
+    // Adding filters specifically for the case where scans are from the same frame, these need to be redone when they're from different frames
+    // filter both point clouds to only z > 0
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PassThrough<pcl::PointXYZ> pass;
+
+    pass.setFilterFieldName ("z");
+    pass.setFilterLimits (0.0, FLT_MAX);
+    //pass.setFilterLimitsNegative (true);
+    pass.setInputCloud (cloud1_ptr);
+    pass.filter (*cloud1_filtered_ptr);
+
+    pass.setInputCloud (cloud2_ptr);
+    pass.filter (*cloud2_filtered_ptr);
+
     pcl::HarrisKeypoint3D <pcl::PointXYZ, pcl::PointXYZI> detector;
     pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_cloud1_ptr (new pcl::PointCloud<pcl::PointXYZI>);
     detector.setNonMaxSupression (true);
-    detector.setInputCloud (cloud1_ptr);
+    detector.setInputCloud (cloud1_filtered_ptr);
     detector.setThreshold (1e-6);
     detector.setRadius(1.0);
 //    pcl::StopWatch watch;
@@ -49,10 +68,37 @@ void compare_harris_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
 //        pcl::console::print_warn ("Keypoints indices are empty!\n");
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_cloud2_ptr (new pcl::PointCloud<pcl::PointXYZI>);
-    detector.setInputCloud (cloud2_ptr);
+    detector.setInputCloud (cloud2_filtered_ptr);
 //    detector.setRadius(2.0);
     detector.compute (*keypoints_cloud2_ptr);
     pcl::console::print_highlight ("Detected %zd points in cloud 2\n", keypoints_cloud2_ptr->size ());
+
+
+    // Only consider points in convex hull of intersection of points
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_2_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::copyPointCloud(*keypoints_cloud1_ptr, *keypoints_cloud1_2_ptr);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_2_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::copyPointCloud(*keypoints_cloud2_ptr, *keypoints_cloud2_2_ptr);
+
+    std::vector<pcl::Vertices> hull_polygons;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+    hull_calc->setInputCloud(intersection);
+    hull_calc->reconstruct(*hull_points, hull_polygons);
+
+    pcl::CropHull<pcl::PointXYZ> crop;
+    crop.setHullCloud(hull_points);
+    crop.setHullIndices(hull_polygons);
+    crop.setDim(3);
+    crop.setInputCloud(keypoints_cloud1_2_ptr);
+    crop.filter(*keypoints_cloud1_filtered_ptr);
+    crop.setInputCloud(keypoints_cloud2_2_ptr);
+    crop.filter(*keypoints_cloud2_filtered_ptr);
+
+
 
     std::ofstream outfile1;
     std::string filename1 = filename + "_1.csv";
@@ -60,19 +106,19 @@ void compare_harris_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
     outfile1 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
 
     // Create KD tree to do nearest neighbor search
-    pcl::KdTreeFLANN<pcl::PointXYZI> kdtree;
-    kdtree.setInputCloud(keypoints_cloud2_ptr);
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    kdtree.setInputCloud(keypoints_cloud2_filtered_ptr);
 
     // For each point in cloud 1, find corresponding point(s) in cloud 2
-    for (size_t i = 0; i < keypoints_cloud1_ptr->points.size(); ++i)
+    for (size_t i = 0; i < keypoints_cloud1_filtered_ptr->points.size(); ++i)
     {
-        Eigen::Vector3f p1  = keypoints_cloud1_ptr->points[i].getVector3fMap();
+        Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[i].getVector3fMap();
 
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
-        if ( kdtree.nearestKSearch (keypoints_cloud1_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
-            Eigen::Vector3f p2  = keypoints_cloud2_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+        if ( kdtree.nearestKSearch (keypoints_cloud1_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
             outfile1 << i << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << pointIdxNKNSearch[0] << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
         }
     }
@@ -85,27 +131,151 @@ void compare_harris_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
 
     // Create KD tree to do nearest neighbor search
 //    pcl::KdTreeFLANN<pcl::PointXYZI> kdtree;
-    kdtree.setInputCloud(keypoints_cloud1_ptr);
+    kdtree.setInputCloud(keypoints_cloud1_filtered_ptr);
 
     // For each point in cloud 2, find corresponding point(s) in cloud 1
-    for (size_t i = 0; i < keypoints_cloud2_ptr->points.size(); ++i)
+    for (size_t i = 0; i < keypoints_cloud2_filtered_ptr->points.size(); ++i)
     {
-        Eigen::Vector3f p2  = keypoints_cloud2_ptr->points[i].getVector3fMap();
+        Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[i].getVector3fMap();
 
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
-        if ( kdtree.nearestKSearch (keypoints_cloud2_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
-            Eigen::Vector3f p1  = keypoints_cloud1_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+        if ( kdtree.nearestKSearch (keypoints_cloud2_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
             outfile2 << pointIdxNKNSearch[0] << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << i << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
         }
     }
     outfile2.close();
 }
 
-void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename)
+void compare_harris_keypts_frametoframe(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, Eigen::Matrix4f t1, Eigen::Matrix4f t2, std::string filename, pcl::PointCloud<pcl::PointXYZ>::Ptr intersection) {
+    // No filtering because we can't say anything about region of intersection yet
+
+    pcl::HarrisKeypoint3D<pcl::PointXYZ, pcl::PointXYZI> detector;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_cloud1_ptr(new pcl::PointCloud<pcl::PointXYZI>);
+    detector.setNonMaxSupression(true);
+    detector.setInputCloud(cloud1_ptr);
+    detector.setThreshold(1e-6);
+    detector.setRadius(1.0);
+//    pcl::StopWatch watch;
+    detector.compute(*keypoints_cloud1_ptr);
+    pcl::console::print_highlight("Detected %zd points in cloud 1\n", keypoints_cloud1_ptr->size());
+//    pcl::PointIndicesConstPtr keypoints_indices_frame0 = detector.getKeypointsIndices ();
+//    if (!keypoints_indices_frame0->indices.empty ())
+//    {
+////        pcl::io::savePCDFile ("keypoints.pcd", *cloud, keypoints_indices->indices, true);
+//        pcl::console::print_info ("Saved keypoints to keypoints.pcd\n");
+//    }
+//    else
+//        pcl::console::print_warn ("Keypoints indices are empty!\n");
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_cloud2_ptr(new pcl::PointCloud<pcl::PointXYZI>);
+    detector.setInputCloud(cloud2_ptr);
+//    detector.setRadius(2.0);
+    detector.compute(*keypoints_cloud2_ptr);
+    pcl::console::print_highlight("Detected %zd points in cloud 2\n", keypoints_cloud2_ptr->size());
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_cloud1_frame2_ptr(new pcl::PointCloud<pcl::PointXYZI>);
+    // Rotate points to be in the same frame
+    // Specifically, frame 2, because that's the camera frame
+    Eigen::Matrix4f Tcam12cam2 = t2.inverse() * t1;
+    pcl::transformPointCloud(*keypoints_cloud1_ptr, *keypoints_cloud1_frame2_ptr, Tcam12cam2);
+
+    // Only consider points in convex hull of intersection of points
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_2_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::copyPointCloud(*keypoints_cloud1_frame2_ptr, *keypoints_cloud1_2_ptr);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_2_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::copyPointCloud(*keypoints_cloud2_ptr, *keypoints_cloud2_2_ptr);
+
+    std::vector<pcl::Vertices> hull_polygons;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+    hull_calc->setInputCloud(intersection);
+    hull_calc->reconstruct(*hull_points, hull_polygons);
+
+    pcl::CropHull<pcl::PointXYZ> crop;
+    crop.setHullCloud(hull_points);
+    crop.setHullIndices(hull_polygons);
+    crop.setDim(3);
+    crop.setInputCloud(keypoints_cloud1_2_ptr);
+    crop.filter(*keypoints_cloud1_filtered_ptr);
+    crop.setInputCloud(keypoints_cloud2_2_ptr);
+    crop.filter(*keypoints_cloud2_filtered_ptr);
+
+
+    std::ofstream outfile1;
+    std::string filename1 = filename + "_1.csv";
+    outfile1.open(filename1);
+    outfile1 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
+
+    // Create KD tree to do nearest neighbor search
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    kdtree.setInputCloud(keypoints_cloud2_filtered_ptr);
+
+    // For each point in cloud 1, find corresponding point(s) in cloud 2
+    for (size_t i = 0; i < keypoints_cloud1_filtered_ptr->points.size(); ++i) {
+        Eigen::Vector3f p1 = keypoints_cloud1_filtered_ptr->points[i].getVector3fMap();
+
+        std::vector<int> pointIdxNKNSearch(1);
+        std::vector<float> pointNKNSquaredDistance(1);
+
+        if (kdtree.nearestKSearch(keypoints_cloud1_filtered_ptr->points[i], 1, pointIdxNKNSearch,
+                                  pointNKNSquaredDistance) > 0) {
+            Eigen::Vector3f p2 = keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+            outfile1 << i << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] << ", " << pointIdxNKNSearch[0] << ", "
+                     << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
+        }
+    }
+    outfile1.close();
+
+    std::ofstream outfile2;
+    std::string filename2 = filename + "_2.csv";
+    outfile2.open(filename2);
+    outfile2 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
+
+    // Create KD tree to do nearest neighbor search
+//    pcl::KdTreeFLANN<pcl::PointXYZI> kdtree;
+    kdtree.setInputCloud(keypoints_cloud1_filtered_ptr);
+
+    // For each point in cloud 2, find corresponding point(s) in cloud 1
+    for (size_t i = 0; i < keypoints_cloud2_filtered_ptr->points.size(); ++i) {
+        Eigen::Vector3f p2 = keypoints_cloud2_filtered_ptr->points[i].getVector3fMap();
+
+        std::vector<int> pointIdxNKNSearch(1);
+        std::vector<float> pointNKNSquaredDistance(1);
+
+        if (kdtree.nearestKSearch(keypoints_cloud2_filtered_ptr->points[i], 1, pointIdxNKNSearch,
+                                  pointNKNSquaredDistance) > 0) {
+            Eigen::Vector3f p1 = keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+            outfile2 << pointIdxNKNSearch[0] << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] << ", " << i << ", "
+                     << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
+        }
+    }
+    outfile2.close();
+}
+
+void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename, pcl::PointCloud<pcl::PointXYZ>::Ptr intersection)
 {
-    double model_resolution = 1.0;
+    // Adding filters specifically for the case where scans are from the same frame, these need to be redone when they're from different frames
+    // filter both point clouds to only z > 0
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PassThrough<pcl::PointXYZ> pass;
+
+    pass.setFilterFieldName ("z");
+    pass.setFilterLimits (0.0, FLT_MAX);
+    //pass.setFilterLimitsNegative (true);
+    pass.setInputCloud (cloud1_ptr);
+    pass.filter (*cloud1_filtered_ptr);
+
+    pass.setInputCloud (cloud2_ptr);
+    pass.filter (*cloud2_filtered_ptr);
+
+    double model_resolution = 0.25;
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
     pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_ptr (new pcl::PointCloud<pcl::PointXYZ>);
 
@@ -118,7 +288,7 @@ void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::Poi
     iss_detector.setThreshold32 (0.975);
     iss_detector.setMinNeighbors (5);
     iss_detector.setNumberOfThreads (4);
-    iss_detector.setInputCloud (cloud1_ptr);
+    iss_detector.setInputCloud (cloud1_filtered_ptr);
     iss_detector.compute (*keypoints_cloud1_ptr);
 
     pcl::console::print_highlight ("Detected %zd points in cloud 1\n", keypoints_cloud1_ptr->size ());
@@ -132,10 +302,31 @@ void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::Poi
 //        pcl::console::print_warn ("Keypoints indices are empty!\n");
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_ptr (new pcl::PointCloud<pcl::PointXYZ>);
-    iss_detector.setInputCloud (cloud2_ptr);
+    iss_detector.setInputCloud (cloud2_filtered_ptr);
 //    detector.setRadius(2.0);
     iss_detector.compute (*keypoints_cloud2_ptr);
     pcl::console::print_highlight ("Detected %zd points in cloud 2\n", keypoints_cloud2_ptr->size ());
+
+    // Only consider points in convex hull of intersection of points
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+
+    std::vector<pcl::Vertices> hull_polygons;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+    hull_calc->setInputCloud(intersection);
+    hull_calc->reconstruct(*hull_points, hull_polygons);
+
+    pcl::CropHull<pcl::PointXYZ> crop;
+    crop.setHullCloud(hull_points);
+    crop.setHullIndices(hull_polygons);
+    crop.setDim(3);
+    crop.setInputCloud(keypoints_cloud1_ptr);
+    crop.filter(*keypoints_cloud1_filtered_ptr);
+    crop.setInputCloud(keypoints_cloud2_ptr);
+    crop.filter(*keypoints_cloud2_filtered_ptr);
+
+
 
     std::ofstream outfile1;
     std::string filename1 = filename + "_1.csv";
@@ -144,18 +335,18 @@ void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::Poi
 
     // Create KD tree to do nearest neighbor search
     pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-    kdtree.setInputCloud(keypoints_cloud2_ptr);
+    kdtree.setInputCloud(keypoints_cloud2_filtered_ptr);
 
     // For each point in cloud 1, find corresponding point(s) in cloud 2
-    for (size_t i = 0; i < keypoints_cloud1_ptr->points.size(); ++i)
+    for (size_t i = 0; i < keypoints_cloud1_filtered_ptr->points.size(); ++i)
     {
-        Eigen::Vector3f p1  = keypoints_cloud1_ptr->points[i].getVector3fMap();
+        Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[i].getVector3fMap();
 
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
-        if ( kdtree.nearestKSearch (keypoints_cloud1_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
-            Eigen::Vector3f p2  = keypoints_cloud2_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+        if ( kdtree.nearestKSearch (keypoints_cloud1_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
             outfile1 << i << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << pointIdxNKNSearch[0] << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
         }
     }
@@ -168,18 +359,268 @@ void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::Poi
 
     // Create KD tree to do nearest neighbor search
 //    pcl::KdTreeFLANN<pcl::PointXYZI> kdtree;
-    kdtree.setInputCloud(keypoints_cloud1_ptr);
+    kdtree.setInputCloud(keypoints_cloud1_filtered_ptr);
 
     // For each point in cloud 2, find corresponding point(s) in cloud 1
-    for (size_t i = 0; i < keypoints_cloud2_ptr->points.size(); ++i)
+    for (size_t i = 0; i < keypoints_cloud2_filtered_ptr->points.size(); ++i)
     {
-        Eigen::Vector3f p2  = keypoints_cloud2_ptr->points[i].getVector3fMap();
+        Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[i].getVector3fMap();
 
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
-        if ( kdtree.nearestKSearch (keypoints_cloud2_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
-            Eigen::Vector3f p1  = keypoints_cloud1_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+        if ( kdtree.nearestKSearch (keypoints_cloud2_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+            outfile2 << pointIdxNKNSearch[0] << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << i << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
+        }
+    }
+    outfile2.close();
+}
+
+
+void compare_kpq_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename, pcl::PointCloud<pcl::PointXYZ>::Ptr intersection)
+{
+    // Adding filters specifically for the case where scans are from the same frame, these need to be redone when they're from different frames
+    // filter both point clouds to only z > 0
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PassThrough<pcl::PointXYZ> pass;
+
+    std::vector<pcl::Vertices> hull_polygons;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+    hull_calc->setInputCloud(intersection);
+    hull_calc->reconstruct(*hull_points, hull_polygons);
+
+    pcl::CropHull<pcl::PointXYZ> crop;
+    crop.setHullCloud(hull_points);
+    crop.setHullIndices(hull_polygons);
+    crop.setDim(3);
+    crop.setInputCloud(cloud1_ptr);
+    crop.filter(*cloud1_filtered_ptr);
+    crop.setInputCloud(cloud2_ptr);
+    crop.filter(*cloud2_filtered_ptr);
+
+//    pass.setFilterFieldName ("z");
+//    pass.setFilterLimits (0.0, FLT_MAX);
+//    //pass.setFilterLimitsNegative (true);
+//    pass.setInputCloud (cloud1_ptr);
+//    pass.filter (*cloud1_filtered_ptr);
+//
+//    pass.setInputCloud (cloud2_ptr);
+//    pass.filter (*cloud2_filtered_ptr);
+
+    double model_resolution = 0.25;
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+
+// Compute model_resolution
+    pcl::KPQKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> kpq_detector;
+    kpq_detector.setBorderRadius(0.001);
+    kpq_detector.setSearchMethod (tree);
+    kpq_detector.setSalientRadius (6 * model_resolution);
+    kpq_detector.setNonMaxRadius (4 * model_resolution);
+    kpq_detector.setNormalRadius(4 * model_resolution);
+    kpq_detector.setDeltaThreshold (1.06);
+    kpq_detector.setDeltaMax (5.0);
+    kpq_detector.setMinNeighbors (5);
+    kpq_detector.setNumberOfThreads (4);
+    kpq_detector.setInputCloud (cloud1_filtered_ptr);
+    kpq_detector.compute (*keypoints_cloud1_ptr);
+
+    pcl::console::print_highlight ("Detected %zd points in cloud 1\n", keypoints_cloud1_ptr->size ());
+//    pcl::PointIndicesConstPtr keypoints_indices_frame0 = detector.getKeypointsIndices ();
+//    if (!keypoints_indices_frame0->indices.empty ())
+//    {
+////        pcl::io::savePCDFile ("keypoints.pcd", *cloud, keypoints_indices->indices, true);
+//        pcl::console::print_info ("Saved keypoints to keypoints.pcd\n");
+//    }
+//    else
+//        pcl::console::print_warn ("Keypoints indices are empty!\n");
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    kpq_detector.setInputCloud (cloud2_filtered_ptr);
+//    detector.setRadius(2.0);
+    kpq_detector.compute (*keypoints_cloud2_ptr);
+    pcl::console::print_highlight ("Detected %zd points in cloud 2\n", keypoints_cloud2_ptr->size ());
+
+    // Only consider points in convex hull of intersection of points
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr (keypoints_cloud1_ptr);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr (keypoints_cloud2_ptr);
+
+
+//    std::vector<pcl::Vertices> hull_polygons;
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+//    hull_calc->setInputCloud(intersection);
+//    hull_calc->reconstruct(*hull_points, hull_polygons);
+//
+//    pcl::CropHull<pcl::PointXYZ> crop;
+//    crop.setHullCloud(hull_points);
+//    crop.setHullIndices(hull_polygons);
+//    crop.setDim(3);
+//    crop.setInputCloud(keypoints_cloud1_ptr);
+//    crop.filter(*keypoints_cloud1_filtered_ptr);
+//    crop.setInputCloud(keypoints_cloud2_ptr);
+//    crop.filter(*keypoints_cloud2_filtered_ptr);
+
+
+
+    std::ofstream outfile1;
+    std::string filename1 = filename + "_1.csv";
+    outfile1.open(filename1);
+    outfile1 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
+
+    // Create KD tree to do nearest neighbor search
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    kdtree.setInputCloud(keypoints_cloud2_filtered_ptr);
+
+    // For each point in cloud 1, find corresponding point(s) in cloud 2
+    for (size_t i = 0; i < keypoints_cloud1_filtered_ptr->points.size(); ++i)
+    {
+        Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[i].getVector3fMap();
+
+        std::vector<int> pointIdxNKNSearch(1);
+        std::vector<float> pointNKNSquaredDistance(1);
+
+        if ( kdtree.nearestKSearch (keypoints_cloud1_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+            outfile1 << i << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << pointIdxNKNSearch[0] << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
+        }
+    }
+    outfile1.close();
+
+    std::ofstream outfile2;
+    std::string filename2 = filename + "_2.csv";
+    outfile2.open(filename2);
+    outfile2 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
+
+    // Create KD tree to do nearest neighbor search
+//    pcl::KdTreeFLANN<pcl::PointXYZI> kdtree;
+    kdtree.setInputCloud(keypoints_cloud1_filtered_ptr);
+
+    // For each point in cloud 2, find corresponding point(s) in cloud 1
+    for (size_t i = 0; i < keypoints_cloud2_filtered_ptr->points.size(); ++i)
+    {
+        Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[i].getVector3fMap();
+
+        std::vector<int> pointIdxNKNSearch(1);
+        std::vector<float> pointNKNSquaredDistance(1);
+
+        if ( kdtree.nearestKSearch (keypoints_cloud2_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+            outfile2 << pointIdxNKNSearch[0] << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << i << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
+        }
+    }
+    outfile2.close();
+}
+
+void compare_kpqas_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename, pcl::PointCloud<pcl::PointXYZ>::Ptr intersection)
+{
+    // Adding filters specifically for the case where scans are from the same frame, these need to be redone when they're from different frames
+    // filter both point clouds to only z > 0
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PassThrough<pcl::PointXYZ> pass;
+
+    std::vector<pcl::Vertices> hull_polygons;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+    hull_calc->setInputCloud(intersection);
+    hull_calc->reconstruct(*hull_points, hull_polygons);
+
+    pcl::CropHull<pcl::PointXYZ> crop;
+    crop.setHullCloud(hull_points);
+    crop.setHullIndices(hull_polygons);
+    crop.setDim(3);
+    crop.setInputCloud(cloud1_ptr);
+    crop.filter(*cloud1_filtered_ptr);
+    crop.setInputCloud(cloud2_ptr);
+    crop.filter(*cloud2_filtered_ptr);
+
+    double model_resolution = 0.25;
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ> ());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+
+// Compute model_resolution
+    pcl::KPQASKeypoint3D<pcl::PointXYZ, pcl::PointXYZ> kpqas_detector;
+    kpqas_detector.setBorderRadius(0.001);
+    kpqas_detector.setSearchMethod (tree);
+    kpqas_detector.setSalientRadius (6 * model_resolution);
+    kpqas_detector.setNonMaxRadius (4 * model_resolution);
+    kpqas_detector.setNormalRadius(4 * model_resolution);
+    kpqas_detector.setDeltaThreshold (1.06);
+    kpqas_detector.setDeltaMax (5.0);
+    kpqas_detector.setMinNeighbors (5);
+    kpqas_detector.setNumberOfThreads (4);
+    kpqas_detector.setInputCloud (cloud1_filtered_ptr);
+    kpqas_detector.compute (*keypoints_cloud1_ptr);
+
+    pcl::console::print_highlight ("Detected %zd points in cloud 1\n", keypoints_cloud1_ptr->size ());
+//    pcl::PointIndicesConstPtr keypoints_indices_frame0 = detector.getKeypointsIndices ();
+//    if (!keypoints_indices_frame0->indices.empty ())
+//    {
+////        pcl::io::savePCDFile ("keypoints.pcd", *cloud, keypoints_indices->indices, true);
+//        pcl::console::print_info ("Saved keypoints to keypoints.pcd\n");
+//    }
+//    else
+//        pcl::console::print_warn ("Keypoints indices are empty!\n");
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    kpqas_detector.setInputCloud (cloud2_filtered_ptr);
+//    detector.setRadius(2.0);
+    kpqas_detector.compute (*keypoints_cloud2_ptr);
+    pcl::console::print_highlight ("Detected %zd points in cloud 2\n", keypoints_cloud2_ptr->size ());
+
+    // Only consider points in convex hull of intersection of points
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr (keypoints_cloud1_ptr);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr (keypoints_cloud2_ptr);
+
+    std::ofstream outfile1;
+    std::string filename1 = filename + "_1.csv";
+    outfile1.open(filename1);
+    outfile1 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
+
+    // Create KD tree to do nearest neighbor search
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    kdtree.setInputCloud(keypoints_cloud2_filtered_ptr);
+
+    // For each point in cloud 1, find corresponding point(s) in cloud 2
+    for (size_t i = 0; i < keypoints_cloud1_filtered_ptr->points.size(); ++i)
+    {
+        Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[i].getVector3fMap();
+
+        std::vector<int> pointIdxNKNSearch(1);
+        std::vector<float> pointNKNSquaredDistance(1);
+
+        if ( kdtree.nearestKSearch (keypoints_cloud1_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
+            outfile1 << i << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << pointIdxNKNSearch[0] << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
+        }
+    }
+    outfile1.close();
+
+    std::ofstream outfile2;
+    std::string filename2 = filename + "_2.csv";
+    outfile2.open(filename2);
+    outfile2 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared" << std::endl;
+
+    // Create KD tree to do nearest neighbor search
+//    pcl::KdTreeFLANN<pcl::PointXYZI> kdtree;
+    kdtree.setInputCloud(keypoints_cloud1_filtered_ptr);
+
+    // For each point in cloud 2, find corresponding point(s) in cloud 1
+    for (size_t i = 0; i < keypoints_cloud2_filtered_ptr->points.size(); ++i)
+    {
+        Eigen::Vector3f p2  = keypoints_cloud2_filtered_ptr->points[i].getVector3fMap();
+
+        std::vector<int> pointIdxNKNSearch(1);
+        std::vector<float> pointNKNSquaredDistance(1);
+
+        if ( kdtree.nearestKSearch (keypoints_cloud2_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 ) {
+            Eigen::Vector3f p1  = keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].getVector3fMap();
             outfile2 << pointIdxNKNSearch[0] << ", " << p1[0] << ", " << p1[1] << ", " << p1[2] <<", " << i << ", " << p2[0] << ", " << p2[1] << ", " << p2[2] << ", " << pointNKNSquaredDistance[0] << std::endl;
         }
     }
@@ -188,7 +629,7 @@ void compare_iss_keypts(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::Poi
 
 
 
-void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename_keypt_dist, std::string filename_desc) {
+void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud2_ptr, std::string filename_keypt_dist, std::string filename_desc, pcl::PointCloud<pcl::PointXYZ>::Ptr intersection) {
     // -----------------------------------------------
     // -----Create RangeImage from the Frame 0 PointCloud-----
     // -----------------------------------------------
@@ -201,9 +642,10 @@ void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
     Eigen::Affine3f cam_sensor_pose(Eigen::Affine3f::Identity());
     boost::shared_ptr<pcl::RangeImage> range_image_cloud1_ptr(new pcl::RangeImage);
     pcl::RangeImage &range_image_cloud1 = *range_image_cloud1_ptr;
-    range_image_cloud1.createFromPointCloud(*cloud1_ptr, angular_resolution, pcl::deg2rad(360.0f), pcl::deg2rad(180.0f),
+    range_image_cloud1.createFromPointCloud(*cloud1_ptr, angular_resolution, pcl::deg2rad(360.0f), pcl::deg2rad(180.0),
                                                  cam_sensor_pose, pcl::RangeImage::LASER_FRAME, noise_level, min_range,
                                                  border_size);
+
 //    range_image.integrateFarRanges (far_ranges);
 //    if (setUnseenToMaxRange)
 //        range_image.setUnseenToMaxRange();
@@ -318,6 +760,25 @@ void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
         narf_descriptor_keypoints_cloud2.points[i].z = narf_descriptors_cloud2.points[i].z;
     }
 
+    // Only consider points in convex hull of intersection of points
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud1_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr keypoints_cloud2_filtered_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+
+    std::vector<pcl::Vertices> hull_polygons;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull_calc(new pcl::ConvexHull<pcl::PointXYZ>);
+    hull_calc->setInputCloud(intersection);
+    hull_calc->reconstruct(*hull_points, hull_polygons);
+
+    pcl::CropHull<pcl::PointXYZ> crop;
+    crop.setHullCloud(hull_points);
+    crop.setHullIndices(hull_polygons);
+    crop.setDim(3);
+    crop.setInputCloud(narf_descriptor_keypoints_cloud1_ptr);
+    crop.filter(*keypoints_cloud1_filtered_ptr);
+    crop.setInputCloud(narf_descriptor_keypoints_cloud2_ptr);
+    crop.filter(*keypoints_cloud2_filtered_ptr);
+
     std::ofstream outfile1;
     std::string filename1 = filename_keypt_dist + "_1.csv";
     outfile1.open(filename1);
@@ -325,46 +786,66 @@ void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
 
     // Create KD tree to do nearest neighbor search
     pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-    kdtree.setInputCloud(narf_descriptor_keypoints_cloud2_ptr);
+    kdtree.setInputCloud(keypoints_cloud2_filtered_ptr);
 
     // For each point in cloud 1, find corresponding point(s) in cloud 2
-    for (size_t i = 0; i < narf_descriptors_cloud1.points.size(); ++i) {
-        pcl::PointXYZ p1(narf_descriptors_cloud1.points[i].x, narf_descriptors_cloud1.points[i].y, narf_descriptors_cloud1.points[i].z);
+    for (size_t i = 0; i < keypoints_cloud1_filtered_ptr->points.size(); ++i) {
+        pcl::PointXYZ p1(keypoints_cloud1_filtered_ptr->points[i].x, keypoints_cloud1_filtered_ptr->points[i].y, keypoints_cloud1_filtered_ptr->points[i].z);
 
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
-        if (kdtree.nearestKSearch(narf_descriptor_keypoints_cloud1.points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
-            pcl::PointXYZ p2(narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].x, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].y, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].z);
-            float dist = pcl::L2_Norm (narf_descriptors_cloud1.points[i].descriptor, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].descriptor, 36);
+        if (kdtree.nearestKSearch(keypoints_cloud1_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
+            pcl::PointXYZ p2(keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].x, keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].y, keypoints_cloud2_filtered_ptr->points[pointIdxNKNSearch[0]].z);
+            float dist = 0;// pcl::L2_Norm (narf_descriptors_cloud1.points[i].descriptor, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].descriptor, 36);
             outfile1 << i << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << pointIdxNKNSearch[0] << ", "
-                    <<  p2.x << ", " << p2.y << ", " << p2.z << ", " << pointNKNSquaredDistance[0] << ", " << dist << std::endl;
+                     <<  p2.x << ", " << p2.y << ", " << p2.z << ", " << pointNKNSquaredDistance[0] << ", " << dist << std::endl;
         }
     }
     outfile1.close();
 
-    std::ofstream outfile2;
-    std::string filename2 = filename_desc + "_1.csv";
-    outfile2.open(filename2);
-    outfile2 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared, desc_dist" << std::endl;
+//    // Create KD tree to do nearest neighbor search
+//    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+//    kdtree.setInputCloud(narf_descriptor_keypoints_cloud2_ptr);
+//
+//    // For each point in cloud 1, find corresponding point(s) in cloud 2
+//    for (size_t i = 0; i < narf_descriptors_cloud1.points.size(); ++i) {
+//        pcl::PointXYZ p1(narf_descriptors_cloud1.points[i].x, narf_descriptors_cloud1.points[i].y, narf_descriptors_cloud1.points[i].z);
+//
+//        std::vector<int> pointIdxNKNSearch(1);
+//        std::vector<float> pointNKNSquaredDistance(1);
+//
+//        if (kdtree.nearestKSearch(narf_descriptor_keypoints_cloud1.points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
+//            pcl::PointXYZ p2(narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].x, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].y, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].z);
+//            float dist = pcl::L2_Norm (narf_descriptors_cloud1.points[i].descriptor, narf_descriptors_cloud2_ptr->points[pointIdxNKNSearch[0]].descriptor, 36);
+//            outfile1 << i << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << pointIdxNKNSearch[0] << ", "
+//                    <<  p2.x << ", " << p2.y << ", " << p2.z << ", " << pointNKNSquaredDistance[0] << ", " << dist << std::endl;
+//        }
+//    }
+//    outfile1.close();
 
-    // ----------------------------------------------------
-    // -----Match NARF descriptors and display matches-----
-    // ----------------------------------------------------
-    std::vector<int> match_inds;
-    match_inds = matchNarfDescriptors(narf_descriptors_cloud1, narf_descriptors_cloud2);
-    for (size_t i = 0; i < keypoint_indices_cloud1.points.size(); ++i)
-    {
-        if (match_inds[i] < narf_descriptors_cloud2.points.size()) {
-            pcl::PointXYZ p1(narf_descriptors_cloud1.points[i].x, narf_descriptors_cloud1.points[i].y, narf_descriptors_cloud1.points[i].z);
-            pcl::PointXYZ p2(narf_descriptors_cloud2.points[match_inds[i]].x, narf_descriptors_cloud2.points[match_inds[i]].y, narf_descriptors_cloud2.points[match_inds[i]].z);
-            float dist = pcl::L2_Norm (narf_descriptors_cloud1.points[i].descriptor, narf_descriptors_cloud2.points[match_inds[i]].descriptor, 36);
-            outfile2 << i << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << match_inds[i] << ", "
-                    << p2.x << ", " << p2.y << ", " << p2.z << ", " << pcl::geometry::distance(p1, p2) << ", " << dist << std::endl;
-
-        }
-    }
-    outfile2.close();
+//    std::ofstream outfile2;
+//    std::string filename2 = filename_desc + "_1.csv";
+//    outfile2.open(filename2);
+//    outfile2 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared, desc_dist" << std::endl;
+//
+//    // ----------------------------------------------------
+//    // -----Match NARF descriptors and display matches-----
+//    // ----------------------------------------------------
+//    std::vector<int> match_inds;
+//    match_inds = matchNarfDescriptors(narf_descriptors_cloud1, narf_descriptors_cloud2);
+//    for (size_t i = 0; i < keypoint_indices_cloud1.points.size(); ++i)
+//    {
+//        if (match_inds[i] < narf_descriptors_cloud2.points.size()) {
+//            pcl::PointXYZ p1(narf_descriptors_cloud1.points[i].x, narf_descriptors_cloud1.points[i].y, narf_descriptors_cloud1.points[i].z);
+//            pcl::PointXYZ p2(narf_descriptors_cloud2.points[match_inds[i]].x, narf_descriptors_cloud2.points[match_inds[i]].y, narf_descriptors_cloud2.points[match_inds[i]].z);
+//            float dist = pcl::L2_Norm (narf_descriptors_cloud1.points[i].descriptor, narf_descriptors_cloud2.points[match_inds[i]].descriptor, 36);
+//            outfile2 << i << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << match_inds[i] << ", "
+//                    << p2.x << ", " << p2.y << ", " << p2.z << ", " << pcl::geometry::distance(p1, p2) << ", " << dist << std::endl;
+//
+//        }
+//    }
+//    outfile2.close();
 
     std::ofstream outfile3;
     std::string filename3 = filename_keypt_dist + "_2.csv";
@@ -373,46 +854,66 @@ void compare_narf_features(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1_ptr, pcl::
 
     // Create KD tree to do nearest neighbor search
     pcl::KdTreeFLANN<pcl::PointXYZ> kdtree2;
-    kdtree2.setInputCloud(narf_descriptor_keypoints_cloud1_ptr);
+    kdtree2.setInputCloud(keypoints_cloud1_filtered_ptr);
 
     // For each point in cloud 1, find corresponding point(s) in cloud 2
-    for (size_t i = 0; i < narf_descriptors_cloud2.points.size(); ++i) {
-        pcl::PointXYZ p2(narf_descriptors_cloud2.points[i].x, narf_descriptors_cloud2.points[i].y, narf_descriptors_cloud2.points[i].z);
+    for (size_t i = 0; i < keypoints_cloud2_filtered_ptr->points.size(); ++i) {
+        pcl::PointXYZ p2(keypoints_cloud2_filtered_ptr->points[i].x, keypoints_cloud2_filtered_ptr->points[i].y, keypoints_cloud2_filtered_ptr->points[i].z);
 
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
 
-        if (kdtree2.nearestKSearch(narf_descriptor_keypoints_cloud2.points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
-            pcl::PointXYZ p1(narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].x, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].y, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].z);
-            float dist = pcl::L2_Norm (narf_descriptors_cloud2.points[i].descriptor, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].descriptor, 36);
+        if (kdtree2.nearestKSearch(keypoints_cloud2_filtered_ptr->points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
+            pcl::PointXYZ p1(keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].x, keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].y, keypoints_cloud1_filtered_ptr->points[pointIdxNKNSearch[0]].z);
+            float dist = 0; //pcl::L2_Norm (narf_descriptors_cloud2.points[i].descriptor, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].descriptor, 36);
             outfile3 << pointIdxNKNSearch[0] << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << i << ", "
                      <<  p2.x << ", " << p2.y << ", " << p2.z << ", " << pointNKNSquaredDistance[0] << ", " << dist << std::endl;
         }
     }
     outfile3.close();
 
-    std::ofstream outfile4;
-    std::string filename4 = filename_desc + "_2.csv";
-    outfile4.open(filename4);
-    outfile4 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared, desc_dist" << std::endl;
+//    // Create KD tree to do nearest neighbor search
+//    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree2;
+//    kdtree2.setInputCloud(narf_descriptor_keypoints_cloud1_ptr);
+//
+//    // For each point in cloud 1, find corresponding point(s) in cloud 2
+//    for (size_t i = 0; i < narf_descriptors_cloud2.points.size(); ++i) {
+//        pcl::PointXYZ p2(narf_descriptors_cloud2.points[i].x, narf_descriptors_cloud2.points[i].y, narf_descriptors_cloud2.points[i].z);
+//
+//        std::vector<int> pointIdxNKNSearch(1);
+//        std::vector<float> pointNKNSquaredDistance(1);
+//
+//        if (kdtree2.nearestKSearch(narf_descriptor_keypoints_cloud2.points[i], 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) {
+//            pcl::PointXYZ p1(narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].x, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].y, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].z);
+//            float dist = pcl::L2_Norm (narf_descriptors_cloud2.points[i].descriptor, narf_descriptors_cloud1_ptr->points[pointIdxNKNSearch[0]].descriptor, 36);
+//            outfile3 << pointIdxNKNSearch[0] << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << i << ", "
+//                     <<  p2.x << ", " << p2.y << ", " << p2.z << ", " << pointNKNSquaredDistance[0] << ", " << dist << std::endl;
+//        }
+//    }
+//    outfile3.close();
 
-    // ----------------------------------------------------
-    // -----Match NARF descriptors and display matches-----
-    // ----------------------------------------------------
-    std::vector<int> match_inds2;
-    match_inds = matchNarfDescriptors(narf_descriptors_cloud2, narf_descriptors_cloud1);
-    for (size_t i = 0; i < keypoint_indices_cloud2.points.size(); ++i)
-    {
-        if (match_inds[i] < narf_descriptors_cloud1.points.size()) {
-            pcl::PointXYZ p1(narf_descriptors_cloud1.points[match_inds[i]].x, narf_descriptors_cloud1.points[match_inds[i]].y, narf_descriptors_cloud1.points[match_inds[i]].z);
-            pcl::PointXYZ p2(narf_descriptors_cloud2.points[i].x, narf_descriptors_cloud2.points[i].y, narf_descriptors_cloud2.points[i].z);
-            float dist = pcl::L2_Norm (narf_descriptors_cloud1.points[match_inds[i]].descriptor, narf_descriptors_cloud2.points[i].descriptor, 36);
-            outfile4 << match_inds[i] << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << i << ", "
-                     << p2.x << ", " << p2.y << ", " << p2.z << ", " << pcl::geometry::distance(p1, p2) << ", " << dist << std::endl;
-
-        }
-    }
-    outfile4.close();
+//    std::ofstream outfile4;
+//    std::string filename4 = filename_desc + "_2.csv";
+//    outfile4.open(filename4);
+//    outfile4 << "i1, x1, y1, z1, i2, x2, y2, z2, dist_squared, desc_dist" << std::endl;
+//
+//    // ----------------------------------------------------
+//    // -----Match NARF descriptors and display matches-----
+//    // ----------------------------------------------------
+//    std::vector<int> match_inds2;
+//    match_inds = matchNarfDescriptors(narf_descriptors_cloud2, narf_descriptors_cloud1);
+//    for (size_t i = 0; i < keypoint_indices_cloud2.points.size(); ++i)
+//    {
+//        if (match_inds[i] < narf_descriptors_cloud1.points.size()) {
+//            pcl::PointXYZ p1(narf_descriptors_cloud1.points[match_inds[i]].x, narf_descriptors_cloud1.points[match_inds[i]].y, narf_descriptors_cloud1.points[match_inds[i]].z);
+//            pcl::PointXYZ p2(narf_descriptors_cloud2.points[i].x, narf_descriptors_cloud2.points[i].y, narf_descriptors_cloud2.points[i].z);
+//            float dist = pcl::L2_Norm (narf_descriptors_cloud1.points[match_inds[i]].descriptor, narf_descriptors_cloud2.points[i].descriptor, 36);
+//            outfile4 << match_inds[i] << ", " << p1.x << ", " << p1.y << ", " << p1.z << ", " << i << ", "
+//                     << p2.x << ", " << p2.y << ", " << p2.z << ", " << pcl::geometry::distance(p1, p2) << ", " << dist << std::endl;
+//
+//        }
+//    }
+//    outfile4.close();
 }
 
 // Compute feature matches based on descriptors only.

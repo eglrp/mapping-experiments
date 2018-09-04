@@ -34,11 +34,11 @@ int main(int argc, char** argv) {
 
     cout << "loading velodyne frame 0 from file" << endl;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame0_in_cam0_frame_ptr = loadVelFrameInCam0Ref(0);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame0_in_cam0_frame_ptr = loadVelFrameInCam0Ref(0,0);
 
     cout << "loading velodyne frame 1 from file" << endl;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame1_in_cam0_frame_ptr = loadVelFrameInCam0Ref(1);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr velo_frame1_in_cam0_frame_ptr = loadVelFrameInCam0Ref(1,0);
 
 //    // Estimate normals on velo dataset (from http://pointclouds.org/documentation/tutorials/normal_estimation.php)
 //    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> ne_velo;
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     float noise_level = 0.0;
     float min_range = 0.0f;
-    int border_size = 1;
+    int border_size = 0;
     float angular_resolution = pcl::deg2rad(0.5f);
     float support_size = 0.25f; //0.2f;
     Eigen::Affine3f cam_sensor_pose(Eigen::Affine3f::Identity());

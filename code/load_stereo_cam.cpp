@@ -149,19 +149,19 @@ void read_frame(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, cv::Mat p1_proj_mat, str
 //    T.at<double>(0,0) = -0.54*15; //-3.8614e+02 / 10;
 //        T.at<double>(0,0) = -3.8614e+02 / 10;
     cv::Mat R1, P1, R2, P2;
-    cout << R << endl;
-    cout << T << endl;
+//    cout << R << endl;
+//    cout << T << endl;
 
     cv::Mat Q;
     cv::Rect roi1, roi2;
 
-    cout << "Computing stereo camera transforms" << endl;
+//    cout << "Computing stereo camera transforms" << endl;
 
     cv::stereoRectify( cam0mat, cam0dist, cam1mat, cam1dist, img_size, R, T, R1, R2, P1, P2, Q, cv::CALIB_ZERO_DISPARITY, 0, img_size, &roi1, &roi2 );
 
-    cout << P1 << endl;
-    cout << P2 << endl;
-    cout << Q << endl;
+//    cout << P1 << endl;
+//    cout << P2 << endl;
+//    cout << Q << endl;
 
     cv::Mat map11, map12, map21, map22;
     cv::initUndistortRectifyMap(cam0mat, cam0dist, R1, P1, img_size, CV_16SC2, map11, map12);
@@ -174,7 +174,7 @@ void read_frame(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, cv::Mat p1_proj_mat, str
     im0 = img1r;
     im1 = img2r;
 
-    cout << "Setting up block matcher" << endl;
+//    cout << "Setting up block matcher" << endl;
 
     int numberOfDisparities = ((img_size.width/8) + 15) & -16;
 
@@ -223,7 +223,7 @@ void read_frame(pcl::PointCloud<pcl::PointXYZ>::Ptr pc, cv::Mat p1_proj_mat, str
 //        if( alg == STEREO_BM )
 //            bm->compute(img1, img2, disp);
 //        else if( alg == STEREO_SGBM || alg == STEREO_HH || alg == STEREO_3WAY )
-    cout << "Computing disparities" << endl;
+//    cout << "Computing disparities" << endl;
     sgbm->compute(im0, im1, disp);
 //        t = getTickCount() - t;
 //        printf("Time elapsed: %fms\n", t*1000/getTickFrequency());
@@ -326,9 +326,76 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number, int 
     read_frame(cam_cloud_cam_frame_ptr, p1_proj, im0_file, im1_file);
     // poses[frame_number] = TCami2Cam0
 
-    cout << "True rotation from this frame to Cam i frame: \n" << poses[frame_number] << endl;
+//    cout << "True rotation from this frame to Cam i frame: \n" << poses[frame_number] << endl;
 
     return cam_cloud_cam_frame_ptr;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamjRef(int frame_number, int seq_number)
+{
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    string data_path = "/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/";
+
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
+    int num_poses = poses.size();
+//    Eigen::Matrix4f Tvel2cam = loadVel2Cam("/home/boroson/data/kitti/dataset/sequences/00/calib.txt");
+    cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cam_cloud_cam_frame_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+
+    char filename[10];
+    sprintf(filename, "%06d.png", frame_number);
+    string im0_file = data_path + "image_0/" + string(filename);
+    string im1_file = data_path + "image_1/" + string(filename);
+    cout << "Read file " << im0_file << endl;
+
+    read_frame(cam_cloud_cam_frame_ptr, p1_proj, im0_file, im1_file);
+    // poses[frame_number] = TCami2Cam0
+
+//    cout << "True rotation from this frame to Cam i frame: \n" << poses[frame_number] << endl;
+
+    return cam_cloud_cam_frame_ptr;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadOverlapRegion(int vel_frame_number, int cam_frame_number, int seq_number)
+{
+    char seq_chars[2];
+    sprintf(seq_chars, "%02d", seq_number);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr hull_limits_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    cv::Mat p1_proj = load_proj_mat("/home/boroson/data/kitti/dataset/sequences/" + string(seq_chars) + "/calib.txt");
+
+    vector<Eigen::Matrix4f> poses = loadPoses("/home/boroson/data/kitti/dataset/poses/" + string(seq_chars) + ".txt");
+
+    double fx = p1_proj.at<double>(0,0);
+    double fy = p1_proj.at<double>(1,1);
+    double cx = p1_proj.at<double>(0,2);
+    double cy = p1_proj.at<double>(1,2);
+
+    float max_dist = 120.0; //from Velodyne datasheet
+    float img_size_x = 1392.0;
+    float img_size_y = 512.0;
+
+    if (vel_frame_number != cam_frame_number) {
+        float zdiff = poses[vel_frame_number](2, 3) - poses[cam_frame_number](2, 3);
+        max_dist += zdiff;
+    }
+    hull_limits_ptr->push_back(
+            pcl::PointXYZ((float) (0.0 - cx) * max_dist / fx, (float) (0.0 - cy) * max_dist / fy, max_dist));
+    hull_limits_ptr->push_back(
+            pcl::PointXYZ((float) (img_size_x - cx) * max_dist / fx, (float) (0.0 - cy) * max_dist / fy, max_dist));
+    hull_limits_ptr->push_back(
+            pcl::PointXYZ((float) (0.0 - cx) * max_dist / fx, (float) (img_size_y - cy) * max_dist / fy, max_dist));
+    hull_limits_ptr->push_back(
+            pcl::PointXYZ((float) (img_size_x - cx) * max_dist / fx, (float) (img_size_y - cy) * max_dist / fy,
+                          max_dist));
+    hull_limits_ptr->push_back(pcl::PointXYZ(0.0, 0.0, 0.0));
+
+
+//    pcl::ConvexHull<pcl::PointXYZ>::Ptr hull(new pcl::ConvexHull<pcl::PointXYZ>);
+//    hull->reconstruct(*hull_limits_ptr);
+
+    return hull_limits_ptr;
 }
 
 

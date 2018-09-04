@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
 
     vector<Eigen::Matrix4f> poses = loadPoses(poses_file);
     int num_poses = poses.size();
+    int traj = 2;
 
 //    for (int i = 0; i < num_poses; ++i)
     for (int i = 0; i < 100; i = i + 10)
@@ -53,6 +54,8 @@ int main(int argc, char** argv) {
             cout << "loading stereo frame " << j << " from file" << endl;
 
             pcl::PointCloud<pcl::PointXYZ>::Ptr cam_frame_in_cam0_frame_ptr = loadCamFrameInCamiRef(j, 2);
+
+            pcl::PointCloud<pcl::PointXYZ>::Ptr intersection_hull_ptr = loadOverlapRegion(i, i, traj);
 
 //            string filename_keypt = "/home/boroson/data/kitti/features/narf/seg1_frametoframe/";
 //            filename_keypt.append(to_string(i));
@@ -72,7 +75,7 @@ int main(int argc, char** argv) {
         filename.append("_");
         filename.append(to_string(j));
 
-        compare_harris_keypts(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, filename);
+        compare_harris_keypts_frametoframe(velo_frame_in_cam0_frame_ptr, cam_frame_in_cam0_frame_ptr, poses[i], poses[j], filename, intersection_hull_ptr);
 
 //        string filename = "/home/boroson/data/kitti/features/iss/";
 //        filename.append(to_string(i));

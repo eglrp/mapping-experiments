@@ -26,4 +26,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCam0Ref(int frame_number, int 
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr loadCamFrameInCamiRef(int frame_number, int seq_number);
 
+pcl::PointCloud<pcl::PointXYZ>::Ptr loadOverlapRegion(int vel_frame_number, int cam_frame_number, int seq_number);
+
 #endif //CODE_LOAD_POINT_CLOUD_H
